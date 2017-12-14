@@ -1,0 +1,121 @@
+38a39
+> static const char *opt_password = NULL;
+1123a1125,1141
+>
+>
+>                       if(opt_password) {
+>                                       password = opt_password;
+>                   passwordLen = strlen(password);
+>       
+>                       r = crypt_activate_by_passphrase(cd, activated_name,
+>                               opt_key_slot, password, passwordLen, activate_flags);
+>                       check_signal(&r);
+>                       password = NULL;
+>                       if (r < 0)
+>                               goto out;
+>
+> }
+> else{
+> 
+> 
+1125c1143,1146
+<                       r = tools_get_key(NULL, &password, &passwordLen,
+---
+>
+>               
+>
+>                       r = tools_get_key(NULL,&password, &passwordLen,
+1130,1131c1151,1153
+< 
+<                       r = crypt_activate_by_passphrase(cd, activated_name,
+---
+>
+> 
+>                       r = crypt_activate_by_passphrase(cd, activated_name,
+1132a1155,1159
+>
+>
+> 
+>
+>
+1134a1162,1164
+> 
+>
+>
+1137,1138c1167,1168
+<               } while ((r == -EPERM || r == -ERANGE) && (--tries > 0));
+<       }
+---
+>               } while ((r == -EPERM || r == -ERANGE) && (--tries > 0));}
+> }
+1145,1147c1175,1181
+<       crypt_safe_free(key);
+<       crypt_safe_free(password);
+<       crypt_free(cd);
+---
+> 
+> 
+> 
+> 
+>       //crypt_safe_free(key);
+>       //crypt_safe_free(password);
+>       //crypt_free(cd);
+1150a1185,1189
+> 
+> 
+> 
+> 
+> 
+1157c1196
+<       char *password = NULL;
+---
+>       
+1159a1199,1201
+>       
+> char *password = NULL;
+> 
+1168a1211,1212
+>
+>       
+1169a1214
+>       printf("%d\n", r);
+1200c1245
+<               log_err(_("No key available with this passphrase.\n"));
+---
+>               log_err(_("No key available with this passphrase &r.\n"));
+1477a1523,1527
+> 
+> 
+> 
+> 
+> 
+1649a1700
+>       
+2014a2066,2074
+>       /*
+>       if (argc > 1) {
+>     char *arg_end;
+> 
+>     arg_end = argv[argc-1] + strlen (argv[argc-1]);
+>     *arg_end = ' ';
+> }*/
+>
+>       
+2084a2145,2146
+>               { "password",          'p', POPT_ARG_STRING, &opt_password,          5, N_("Password mode"), NULL },
+>
+2163a2226
+> 
+2171a2235,2237
+>
+>
+>
+2291a2358,2363
+> 
+> 
+> 
+> 
+> 
+> 
+2415d2486
+< 
