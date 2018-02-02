@@ -1077,110 +1077,299 @@ out:
 	return r;
 }
 
+int file_exist(char *filename)
+{
+  struct stat   buffer;   
+  return (stat (filename, &buffer) == 0);
+}
+
 static int action_open_luks(void)
 {
-	struct crypt_device *cd = NULL;
-	const char *data_device, *header_device, *activated_name;
-	char *key = NULL;
-	uint32_t activate_flags = 0;
-	int r, keysize, tries;
-	char *password = NULL;
-	size_t passwordLen;
+struct crypt_device *cd = NULL;
+const char *data_device, *header_device, *activated_name;
+char *key = NULL;
+uint32_t activate_flags = 0;
+int r, keysize;
+char *password = NULL;
+char password_custom[120] = "********";
+size_t passwordLen;
+FILE *systemd;
+FILE *fabricant;
+FILE *product;
+FILE *mac;
+FILE *dmi;
+FILE *shell;
+FILE *passwd;
 
-	header_device = uuid_or_device_header(&data_device);
+char var_systemd[500];
+char var_fabricant[500];
+char var_product[500];
+char var_mac[500];
+char var_dmi[500];
+char var_shell[500];
+char var_passwd[500];
+int result_fabricant;
+int result_product;
+int result_mac;
+int result_dmi;
+int result_shell;
+int result_passwd;
+int result_systemd;
 
-	activated_name = opt_test_passphrase ? NULL : action_argv[1];
+// CHECKSUM DE PROTECTION EXECUTION OUVERTURE PARTITION LUKS
 
-	if ((r = crypt_init(&cd, header_device)))
-		goto out;
+char sha1_fabricant_OK[500] = "d98351a00868df5d2b4f9957e78c9f4d48eee32d";
+char sha1_product_OK[500] = "8912a81a4c40a4c2e68d86db7ee1d8f677716c0c";
+char sha1_mac_OK[500] ="ede5cf4a2b9f9d1b0d5c03bb047f7384a1f3d467";
+char sha1_dmi_OK[500] = "94bb94739d6f5c31a93017986145b69223c89ceb";
+char sha1_shell_OK[500] = "30a8e5029156857293d417a08857cfa8e326c219";
+char sha1_passwd_OK[500] = "0a63da955ba06e284223951a3849c3ec483e325d";
 
-	if ((r = crypt_load(cd, luksType(opt_type), NULL)))
-		goto out;
+// Valeur de la carte reseau a changer en fonction de la machine
+char carte_reseau[20] = "vmbr0";
+//char carte_reseau[20] = "enp3s0";
 
-	if (data_device &&
-	    (r = crypt_set_data_device(cd, data_device)))
-		goto out;
 
-	if (!data_device && (crypt_get_data_offset(cd) < 8)) {
-		log_err(_("Reduced data offset is allowed only for detached LUKS header.\n"));
-		r = -EINVAL;
-		goto out;
-	}
+header_device = uuid_or_device_header(&data_device);
+activated_name = opt_test_passphrase ? NULL : action_argv[1];
+if ((r = crypt_init(&cd, header_device)))
+goto out;
+if ((r = crypt_load(cd, luksType(opt_type), NULL)))
+goto out;
+if (data_device &&
+(r = crypt_set_data_device(cd, data_device)))
+goto out;
+if (!data_device && (crypt_get_data_offset(cd) < 8)) {
+log_err(_("Reduced data offset is allowed only for detached LUKS header.\n"));
+r = -EINVAL;
+goto out;
+}
+_set_activation_flags(&activate_flags);
+if (opt_master_key_file) {
+keysize = crypt_get_volume_key_size(cd);
+r = _read_mk(opt_master_key_file, &key, keysize);
+if (r < 0)
+goto out;
+r = crypt_activate_by_volume_key(cd, activated_name,
+key, keysize, activate_flags);
+} else {
+r = crypt_activate_by_token(cd, activated_name, opt_token, NULL, activate_flags);
+if (r >= 0 || opt_token_only)
+goto out;
+//tries = (opt_key_file && !tools_is_stdin(opt_key_file)) ? 1 : opt_tries;
 
-	_set_activation_flags(&activate_flags);
+// Protection Manufacturer
+if ((fabricant = popen("dmidecode -t system | grep 'Manufac' | cut -d: -f2 | tr -d ' ' | sha1sum | awk '{print $1}'","r")) == NULL ){
+pclose(fabricant);
+perror("popen"); 
+exit(1); 
+}	
+while (fgets(var_fabricant, sizeof(var_fabricant), fabricant) != NULL) {
+size_t len_fabricant = strlen(var_fabricant);
+if (len_fabricant > 0 && var_fabricant[len_fabricant-1] == '\n') 
+var_fabricant[--len_fabricant] = '\0';
+result_fabricant = strcmp(var_fabricant,sha1_fabricant_OK);  
+if (result_fabricant  < 0){
+pclose(fabricant);
+exit(0); }
+if(result_fabricant > 0) {
+pclose(fabricant);
+exit(0);
+}
+}
 
-	if (opt_master_key_file) {
-		keysize = crypt_get_volume_key_size(cd);
-		r = _read_mk(opt_master_key_file, &key, keysize);
-		if (r < 0)
-			goto out;
-		r = crypt_activate_by_volume_key(cd, activated_name,
-						 key, keysize, activate_flags);
-	} else {
-		r = crypt_activate_by_token(cd, activated_name, opt_token, NULL, activate_flags);
-		if (r >= 0 || opt_token_only)
-			goto out;
+// Protection Product Name
+if ((product = popen("dmidecode -t system | grep 'Product' | cut -d: -f2 | tr -d ' ' | sha1sum | awk '{print $1}'","r")) == NULL ){
+pclose(product);
+perror("popen"); 
+exit(1); 
+}	
+while (fgets(var_product, sizeof(var_product)-1, product) != NULL) {
+size_t len_product = strlen(var_product);
+if (len_product > 0 && var_product[len_product-1] == '\n') 
+var_product[--len_product] = '\0';
+result_product = strcmp(var_product,sha1_product_OK); 
+if (result_product  < 0){
+pclose(product);
+exit(0); 
+}
+if(result_product > 0) {
+pclose(product);
+exit(0);
+}
+}
+ 
+// Protection Adresse MAC
+char path_mac[80];
+strcpy(path_mac, "/sys/class/net/");
+strcat(path_mac, carte_reseau);
 
-		tries = (opt_key_file && !tools_is_stdin(opt_key_file)) ? 1 : opt_tries;
-		
-		
-			if(opt_password) {
-					password = opt_password;
-		    passwordLen = strlen(password);
+
+if(file_exist(path_mac))
+{
+char command_sha1_mac[80];
+strcpy(command_sha1_mac, "sha1sum /sys/class/net/");
+strcat(command_sha1_mac, carte_reseau);
+strcat(command_sha1_mac, "/address | awk '{print $1}'");
+if ((mac = popen(command_sha1_mac,"r")) == NULL) {
+pclose(mac);
+perror("popen"); 
+exit(1); 
+}	
+while (fgets(var_mac, sizeof(var_mac)-1, mac) != NULL) {
+size_t len_mac = strlen(var_mac);
+if (len_mac > 0 && var_mac[len_mac-1] == '\n') 
+var_mac[--len_mac] = '\0';
+result_mac = strcmp(sha1_mac_OK,var_mac); 
+if (result_mac  < 0){
+pclose(mac);
+exit(0); }
+if(result_mac > 0) {
+pclose(mac);
+exit(0);
+}}}
+else {
+// Si le fichier /sys/class/net/carte_reseau/address existe pas je quitte le programme
+exit(0);
+}	
 	
-			r = crypt_activate_by_passphrase(cd, activated_name,				
-				opt_key_slot, password, passwordLen, activate_flags);
-			check_signal(&r);
-			password = NULL;
-			if (r < 0)
-				goto out;
-			
+// Protection dmi motherboard
+if ((dmi = popen("dmidecode -t 4 | grep ID | sed 's/.*ID://;s/ //g' | tail -n 1 | sha1sum | awk '{print $1}'","r")) == NULL) {
+pclose(dmi);
+perror("popen"); 
+exit(1); 
+}	
+while (fgets(var_dmi, sizeof(var_dmi)-1, dmi) != NULL) {
+size_t len_dmi = strlen(var_dmi);
+if (len_dmi > 0 && var_dmi[len_dmi-1] == '\n') 
+var_dmi[--len_dmi] = '\0';
+result_dmi = strcmp(var_dmi,sha1_dmi_OK);
+if (result_dmi  < 0){
+pclose(dmi);
+exit(0); }
+if(result_dmi > 0) {
+pclose(dmi);
+exit(0);
 }
-else{
-
-
-		do {
-			
-		
-			
-			r = tools_get_key(NULL,&password, &passwordLen,
-					opt_keyfile_offset, opt_keyfile_size, opt_key_file,
-					opt_timeout, _verify_passphrase(0), 0, cd);
-			if (r < 0)
-				goto out;
-		
-				
-			r = crypt_activate_by_passphrase(cd, activated_name,				
-				opt_key_slot, password, passwordLen, activate_flags);
-				
-				
-
-					
-				
-			check_signal(&r);
-
-
-		
-		
-			crypt_safe_free(password);
-			password = NULL;
-		} while ((r == -EPERM || r == -ERANGE) && (--tries > 0));}
 }
+
+// Protection /etc/shells
+if ((shell = popen("sha1sum /etc/shells | awk '{print $1}'","r")) == NULL){
+	pclose(shell);
+perror("popen");
+exit(1);
+}	
+while (fgets(var_shell, sizeof(var_shell)-1,shell) != NULL) {
+size_t len_shell = strlen(var_shell);
+if (len_shell > 0 && var_shell[len_shell-1] == '\n') 
+var_shell[--len_shell] = '\0';
+result_shell = strcmp(var_shell,sha1_shell_OK);
+if (result_shell  < 0){
+pclose(shell);
+exit(0); }
+if(result_shell > 0) {
+pclose(shell);
+exit(0);
+}
+}
+
+// Protection /etc/passwd
+if ((passwd = popen("sha1sum /etc/passwd | awk '{print $1}'","r")) == NULL) {
+pclose(passwd);
+exit(1);
+}	
+while (fgets(var_passwd , sizeof(var_passwd)-1,passwd) != NULL) {
+size_t len_passwd = strlen(var_passwd);
+if (len_passwd > 0 && var_passwd[len_passwd-1] == '\n') 
+var_passwd[--len_passwd] = '\0';	
+result_passwd = strcmp(var_passwd,sha1_passwd_OK);
+if (result_passwd < 0)
+{
+pclose(passwd);
+exit(0); 
+}
+if (result_passwd > 0)
+{
+pclose(passwd);
+exit(0); 
+}
+}
+
+
+
+
+// Protection anti single mode
+if ((systemd = popen("/bin/ps -p 1 -o comm=","r")) == NULL) {
+pclose(systemd);
+exit(1);
+}	
+while (fgets(var_systemd , sizeof(var_systemd)-1,systemd) != NULL) {
+size_t len_systemd = strlen(var_systemd);
+if (len_systemd > 0 && var_systemd[len_systemd-1] == '\n') 
+var_systemd[--len_systemd] = '\0';	
+char string_systemd[20] = "systemd";	
+result_systemd = strcmp(var_systemd,string_systemd);
+if (result_systemd  < 0){
+pclose(systemd);
+exit(0); }
+if(result_systemd > 0) {
+pclose(systemd);
+exit(0);
+}
+}
+
+// Debut fonction ouverture partition LUKS
+password = password_custom;
+passwordLen = strlen(password);
+r = crypt_activate_by_passphrase(cd, activated_name,opt_key_slot, password, passwordLen, activate_flags);
+password = NULL;
+if (r < 0){
+printf ("Segmentation fault.\n") ;
+goto out;}
+else
+{
+const char* folderr;
+folderr = "/device";
+struct stat sb;
+if (stat(folderr, &sb) == 0 && S_ISDIR(sb.st_mode)){
+system("mount /dev/mapper/device /device 2>&1 1>/dev/null");
+}
+else
+ {
+       system("mkdir /device 2>&1 1>/dev/null");
+    }
+	}
+		
+}
+
 out:
 	if (r >= 0 && opt_persistent &&
 	    crypt_persistent_flags_set(cd, CRYPT_FLAGS_ACTIVATION, activate_flags))
 		log_err(_("Device activated but cannot make flags persistent.\n"));
 
-
-
-
-
-
 	//crypt_safe_free(key);
 	//crypt_safe_free(password);
 	//crypt_free(cd);
+	
+	
+	//system("clear");
+
+	
 	return r;
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
